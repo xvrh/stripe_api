@@ -5,7 +5,8 @@ void main() async {
   var httpClient = Client();
   var api = StripeClient(httpClient, apiKey: 'xxx');
 
-
+  var prices = await api.getPrices(body: {});
+  print(prices);
 
   httpClient.close();
 }

@@ -57,7 +57,7 @@ class ApiClient {
     }
 
     if (authorization case var authorization?) {
-      request.headers['Authorization'] = authorization;
+      request.headers['Authorization'] = 'Bearer $authorization';
     }
 
     var response = await Response.fromStream(await _client.send(request));
