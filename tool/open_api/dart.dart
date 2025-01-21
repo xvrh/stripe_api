@@ -259,7 +259,7 @@ class Service {
 
       buffer.writeln('''
 class $_className {
-  static final _defaultUri = Uri.https('https://api.stripe.com');
+  static final _defaultUri = Uri.https('api.stripe.com');
   final ApiClient _client;
   
   $_className(Client httpClient, {required String? apiKey, Uri? baseUri}):
