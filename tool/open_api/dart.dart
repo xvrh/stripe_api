@@ -120,7 +120,8 @@ class Api {
       var title = schema.title;
       if (schema.properties.isNotEmpty && title != null) {
         var typeName = title.words.toUpperCamel();
-        var existingType = _complexTypes.firstWhereOrNull((c) => c.name == typeName);
+        var existingType =
+            _complexTypes.firstWhereOrNull((c) => c.name == typeName);
         if (existingType == null) {
           var complexType = InlineComplexType.withTitle(this, typeName, schema);
           _complexTypes.add(complexType);
@@ -131,7 +132,8 @@ class Api {
       return MapDartType.withDynamic(this);
     } else if (type == 'string' && schema.format == 'date-time') {
       return DateTimeType(this);
-    }if (type == 'integer' && schema.format == 'unix-time') {
+    }
+    if (type == 'integer' && schema.format == 'unix-time') {
       return DateTimeUnixType(this);
     } else {
       if (type == null) {
@@ -199,21 +201,20 @@ import 'api_utils.dart';''');
     buffer.writeln(_service.toCode());
     buffer.writeln();
 
-      for (var topLevelEnum
-          in _topLevelEnums.values.stableSortedBy((e) => e.name)) {
-        buffer.writeln(topLevelEnum.toCode());
-        buffer.writeln();
-      }
-      for (var complexType
-          in _complexTypes.stableSortedBy((e) => e.className)) {
-        buffer.writeln(complexType.toCode());
-        buffer.writeln();
-      }
+    for (var topLevelEnum
+        in _topLevelEnums.values.stableSortedBy((e) => e.name)) {
+      buffer.writeln(topLevelEnum.toCode());
+      buffer.writeln();
+    }
+    for (var complexType in _complexTypes.stableSortedBy((e) => e.className)) {
+      buffer.writeln(complexType.toCode());
+      buffer.writeln();
+    }
 
-      for (var aliasType in _aliasTypes.stableSortedBy((e) => e.name)) {
-        buffer.writeln(aliasType.toCode());
-        buffer.writeln();
-      }
+    for (var aliasType in _aliasTypes.stableSortedBy((e) => e.name)) {
+      buffer.writeln(aliasType.toCode());
+      buffer.writeln();
+    }
 
     return buffer.toString();
   }
@@ -267,8 +268,7 @@ class Service {
       buffer.writeln(documentationComment(info.description, indent: 0));
     }
 
-
-      buffer.writeln('''
+    buffer.writeln('''
 class $_className {
   static final _defaultUri = Uri.https('api.stripe.com');
   final ApiClient _client;
@@ -276,12 +276,11 @@ class $_className {
   $_className(Client httpClient, {required String? apiKey, Uri? baseUri}):
     _client = ApiClient(baseUri ?? _defaultUri, httpClient, authorization: apiKey);
 ''');
-      for (var operation in operations) {
-        buffer.writeln(operation.toCode());
-        buffer.writeln();
-      }
-      buffer.writeln('}');
-
+    for (var operation in operations) {
+      buffer.writeln(operation.toCode());
+      buffer.writeln();
+    }
+    buffer.writeln('}');
 
     return buffer.toString();
   }
@@ -353,8 +352,11 @@ class Operation {
           "${parameter.required && namedParameterMode ? 'required' : ''} ${parameterType.toString()}${parameter.required ? '' : '?'} $parameterName");
     }
     if (body != null) {
-      encodedParameters.add(
-          'required ${body.typeName} ${body.isFileUpload ? 'file' : 'body'}');
+      if (body.isFileUpload) {
+        encodedParameters.add('required ${body.typeName} file');
+      } else {
+        encodedParameters.add('${body.typeName}? body');
+      }
     }
     if (encodedParameters.isNotEmpty) {
       var joinedParameters = encodedParameters.join(', ');
@@ -396,9 +398,7 @@ class Operation {
     }
 
     buffer.writeln(documentationComment(path.description, indent: 2));
-      buffer
-          .writeln('Future<$returnTypeName> $methodName($parameters) async {');
-
+    buffer.writeln('Future<$returnTypeName> $methodName($parameters) async {');
 
     var parametersCode = '';
 
@@ -435,19 +435,18 @@ class Operation {
       }
     }
 
-
-      var sendCode =
-          "await _client.send('${httpMethod.name}', '$url'$parametersCode,)";
-      if (returnDartType != null) {
-        var decodeCode = _fromJsonCodeForComplexType(
-            _api, returnDartType, sendCode,
-            accessorIsNullable: false, targetIsNullable: false);
-        buffer.write('return $decodeCode;');
-      } else if (returnTypeName != 'void') {
-        buffer.writeln('return $sendCode;');
-      } else {
-        buffer.writeln('$sendCode;');
-      }
+    var sendCode =
+        "await _client.send('${httpMethod.name}', '$url'$parametersCode,)";
+    if (returnDartType != null) {
+      var decodeCode = _fromJsonCodeForComplexType(
+          _api, returnDartType, sendCode,
+          accessorIsNullable: false, targetIsNullable: false);
+      buffer.write('return $decodeCode;');
+    } else if (returnTypeName != 'void') {
+      buffer.writeln('return $sendCode;');
+    } else {
+      buffer.writeln('$sendCode;');
+    }
 
     buffer.writeln('}');
 
@@ -483,8 +482,7 @@ class Operation {
     if (parameters.isNotEmpty) {
       queryParametersCode = ', headers: {';
       for (var parameter in parameters) {
-        var parameterName =
-            dartIdentifier(parameter.name);
+        var parameterName = dartIdentifier(parameter.name);
         if (!parameter.required) {
           queryParametersCode += 'if ($parameterName != null)';
         }
@@ -820,11 +818,9 @@ class InlineComplexType extends ComplexType {
     assert(schema.type == 'object');
   }
 
-  InlineComplexType.withTitle(
-      Api api, String title, sw.Schema schema,
+  InlineComplexType.withTitle(Api api, String title, sw.Schema schema,
       {bool isList = false})
-      : super(api, title,
-      schema) {
+      : super(api, title, schema) {
     assert(schema.type == 'object');
   }
 
@@ -1232,4 +1228,3 @@ extension<T> on Iterable<T> {
     return elements;
   }
 }
-
