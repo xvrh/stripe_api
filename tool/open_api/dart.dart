@@ -117,6 +117,17 @@ class Api {
     } else if (type == 'array') {
       return ListDartType(this, typeFromSchema(schema.items!));
     } else if (type == 'object') {
+      var title = schema.title;
+      if (schema.properties.isNotEmpty && title != null) {
+        var typeName = title.words.toUpperCamel();
+        var existingType = _complexTypes.firstWhereOrNull((c) => c.name == typeName);
+        if (existingType == null) {
+          var complexType = InlineComplexType.withTitle(this, typeName, schema);
+          _complexTypes.add(complexType);
+          existingType = complexType;
+        }
+        return existingType;
+      }
       return MapDartType.withDynamic(this);
     } else if (type == 'string' && schema.format == 'date-time') {
       return DateTimeType(this);
@@ -806,6 +817,14 @@ class InlineComplexType extends ComplexType {
       {bool isList = false})
       : super(api, _computeName(api, parent, propertyName, isList: isList),
             schema) {
+    assert(schema.type == 'object');
+  }
+
+  InlineComplexType.withTitle(
+      Api api, String title, sw.Schema schema,
+      {bool isList = false})
+      : super(api, title,
+      schema) {
     assert(schema.type == 'object');
   }
 
