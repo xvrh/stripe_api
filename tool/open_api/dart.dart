@@ -298,7 +298,7 @@ class Operation {
     return null;
   }
 
-  String toCode({bool isKickstart = false}) {
+  String toCode() {
     final buffer = StringBuffer();
 
     var custom = _api.customImplementations[methodName];
@@ -306,7 +306,10 @@ class Operation {
       return custom;
     }
 
-    var body = _findBody();
+    RequestBody? body;
+    if (httpMethod != sw.HttpMethod.get) {
+      body = _findBody();
+    }
 
     var allParameters = <sw.Parameter>[];
     for (var parameter in path.parameters) {
@@ -382,12 +385,9 @@ class Operation {
     }
 
     buffer.writeln(documentationComment(path.description, indent: 2));
-    if (isKickstart) {
-      buffer.writeln('void $methodName($parameters) {');
-    } else {
       buffer
           .writeln('Future<$returnTypeName> $methodName($parameters) async {');
-    }
+
 
     var parametersCode = '';
 
@@ -424,10 +424,7 @@ class Operation {
       }
     }
 
-    if (isKickstart) {
-      buffer.writeln(
-          "_client.record('${httpMethod.name}', '$url'$parametersCode,);");
-    } else {
+
       var sendCode =
           "await _client.send('${httpMethod.name}', '$url'$parametersCode,)";
       if (returnDartType != null) {
@@ -440,7 +437,7 @@ class Operation {
       } else {
         buffer.writeln('$sendCode;');
       }
-    }
+
     buffer.writeln('}');
 
     return buffer.toString();
