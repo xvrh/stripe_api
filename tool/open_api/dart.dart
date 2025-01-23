@@ -96,7 +96,7 @@ class Api {
     return DartType(this, _typeNameToDartType(raw));
   }
 
-  DartType typeFromSchema(sw.Schema schema) {
+  DartType typeFromSchema(sw.Schema schema, {RequestBody? requestBody}) {
     var type = schema.type;
     var ref = schema.ref;
     if (ref != null) {
@@ -117,19 +117,24 @@ class Api {
     } else if (type == 'array') {
       return ListDartType(this, typeFromSchema(schema.items!));
     } else if (type == 'object') {
-      var title = schema.title;
+      var title = schema.title ?? requestBody?.methodName;
       if (schema.properties.isNotEmpty && title != null) {
         var typeName = title.words.toUpperCamel();
         var existingType =
             _complexTypes.firstWhereOrNull((c) => c.name == typeName);
         if (existingType == null) {
-          var complexType = InlineComplexType.withTitle(this, typeName, schema);
+          var complexType = InlineComplexType.withTitle(this, typeName, schema,
+              requestBody: requestBody);
           _complexTypes.add(complexType);
           existingType = complexType;
         }
         return existingType;
       }
-      return MapDartType.withDynamic(this);
+      if (requestBody != null) {
+        return MapDartType.string(this);
+      } else {
+        return MapDartType.withDynamic(this);
+      }
     } else if (type == 'string' && schema.format == 'date-time') {
       return DateTimeType(this);
     }
@@ -302,7 +307,7 @@ class Operation {
     if (body != null) {
       var contents = body.content;
       if (contents != null) {
-        return RequestBody(_api, body, contents);
+        return RequestBody(_api, body, methodName, contents);
       }
     }
     return null;
@@ -352,11 +357,8 @@ class Operation {
           "${parameter.required && namedParameterMode ? 'required' : ''} ${parameterType.toString()}${parameter.required ? '' : '?'} $parameterName");
     }
     if (body != null) {
-      if (body.isFileUpload) {
-        encodedParameters.add('required ${body.typeName} file');
-      } else {
-        encodedParameters.add('${body.typeName}? body');
-      }
+      encodedParameters.add(
+          '${body.isRequired ? 'required' : ''} ${body.typeName}${body.isRequired ? '' : '?'} ${body.isFileUpload ? 'file' : 'body'}');
     }
     if (encodedParameters.isNotEmpty) {
       var joinedParameters = encodedParameters.join(', ');
@@ -426,8 +428,11 @@ class Operation {
       if (body != null) {
         var bodyJson = body.jsonDartType;
         if (bodyJson != null) {
-          var jsonEncodeCode = bodyJson.toJsonCode(PropertyName('body'), {});
-          parametersCode += ', body: $jsonEncodeCode';
+          var bodySuffix = '';
+          if (!body.isMap) {
+            bodySuffix = '${body.isRequired ? '' : '?'}.toFields()';
+          }
+          parametersCode += ', body: body$bodySuffix';
         } else {
           assert(body.isFileUpload);
           parametersCode += ', file: file';
@@ -500,15 +505,17 @@ class RequestBody {
   bool _isFileUpload = false;
   late sw.Content _content;
   DartType? _jsonDartType;
+  final String methodName;
 
-  RequestBody(this._api, this.request, Map<String, sw.Content> contents) {
+  RequestBody(this._api, this.request, this.methodName,
+      Map<String, sw.Content> contents) {
     var content = contents.entries.first;
     _content = content.value;
     if (content.key == 'multipart/form-data' &&
         content.value.schema?.format == 'binary') {
       _isFileUpload = true;
     } else {
-      _jsonDartType = _api.typeFromSchema(_content.schema!);
+      _jsonDartType = _api.typeFromSchema(_content.schema!, requestBody: this);
     }
   }
 
@@ -517,6 +524,8 @@ class RequestBody {
   bool get isFileUpload => _isFileUpload;
 
   DartType? get jsonDartType => _jsonDartType;
+
+  bool get isMap => _jsonDartType is MapDartType;
 
   String get typeName {
     var jsonType = _jsonDartType;
@@ -532,8 +541,9 @@ class RequestBody {
 class ComplexType extends DartType {
   final sw.Schema definition;
   late final List<Property> _properties;
+  final RequestBody? requestBody;
 
-  ComplexType(Api api, String name, this.definition)
+  ComplexType(Api api, String name, this.definition, {this.requestBody})
       : super(api, _toClassName(name)) {
     _properties = definition.properties.entries.map((e) {
       DartType dartType;
@@ -545,14 +555,43 @@ class ComplexType extends DartType {
       } else if (valueItems != null &&
           valueItems.type == 'object' &&
           valueItems.properties.isNotEmpty) {
-        var complexType =
-            InlineComplexType(api, this, e.key, valueItems, isList: true);
-        api._complexTypes.add(complexType);
-        dartType = ListDartType(api, complexType);
+        var title = valueItems.title;
+        if (title != null) {
+          var typeName = title.words.toUpperCamel();
+          var existingType =
+              api._complexTypes.firstWhereOrNull((c) => c.name == typeName);
+          if (existingType == null) {
+            var complexType = InlineComplexType.withTitle(
+                api, typeName, valueItems,
+                isList: true);
+            api._complexTypes.add(complexType);
+            existingType = complexType;
+          }
+          dartType = ListDartType(api, existingType);
+        } else {
+          var complexType =
+              InlineComplexType(api, this, e.key, valueItems, isList: true);
+          api._complexTypes.add(complexType);
+          dartType = ListDartType(api, complexType);
+        }
       } else if (e.value.type == 'object' && e.value.properties.isNotEmpty) {
-        var complexType = InlineComplexType(api, this, e.key, e.value);
-        api._complexTypes.add(complexType);
-        dartType = complexType;
+        var title = e.value.title;
+        if (title != null) {
+          var typeName = title.words.toUpperCamel();
+          var existingType =
+              api._complexTypes.firstWhereOrNull((c) => c.name == typeName);
+          if (existingType == null) {
+            var complexType =
+                InlineComplexType.withTitle(api, typeName, e.value);
+            api._complexTypes.add(complexType);
+            existingType = complexType;
+          }
+          dartType = existingType;
+        } else {
+          var complexType = InlineComplexType(api, this, e.key, e.value);
+          api._complexTypes.add(complexType);
+          dartType = complexType;
+        }
       } else if (e.value.enums != null) {
         dartType = EnumDartType(api, this, e.key, e.value);
       } else {
@@ -637,43 +676,67 @@ class ComplexType extends DartType {
 
     buffer.writeln();
 
-    buffer.writeln('factory $className.fromJson(Map<String, Object?> json) {');
-    buffer.writeln('return $className(');
-    for (final property in _properties) {
-      var fromJsonCode = property.type.fromJsonCode(
-          "json[r'${property.name.original}']", {},
-          accessorIsNullable: true,
-          targetIsNullable: !_isPropertyRequired(property));
-      buffer.writeln('${property.name.camelCased}: $fromJsonCode,');
-    }
-    buffer.writeln(');');
-
-    buffer.writeln('}');
-    buffer.writeln();
-
-    buffer.writeln('Map<String, Object?> toJson() {');
-    for (final property in _properties) {
-      buffer.writeln(
-          'var ${property.name.camelCased} = this.${property.name.camelCased};');
-    }
-
-    buffer.writeln('');
-    buffer.writeln('final json = <String, Object?>{};');
-    for (final property in _properties) {
-      var toJsonCode = property.type.toJsonCode(property.name, {});
-
-      var isRequired = _isPropertyRequired(property);
-
-      if (!isRequired) {
-        buffer.writeln('if (${property.name.camelCased} != null) {');
+    if (requestBody == null) {
+      buffer
+          .writeln('factory $className.fromJson(Map<String, Object?> json) {');
+      buffer.writeln('return $className(');
+      for (final property in _properties) {
+        var fromJsonCode = property.type.fromJsonCode(
+            "json[r'${property.name.original}']", {},
+            accessorIsNullable: true,
+            targetIsNullable: !_isPropertyRequired(property));
+        buffer.writeln('${property.name.camelCased}: $fromJsonCode,');
       }
-      buffer.writeln("json[r'${property.name.original}'] = $toJsonCode;");
-      if (!isRequired) {
-        buffer.writeln('}');
+      buffer.writeln(');');
+
+      buffer.writeln('}');
+      buffer.writeln();
+
+      buffer.writeln('Map<String, Object?> toJson() {');
+      for (final property in _properties) {
+        buffer.writeln(
+            'var ${property.name.camelCased} = this.${property.name.camelCased};');
       }
+
+      buffer.writeln('');
+      buffer.writeln('final json = <String, Object?>{};');
+      for (final property in _properties) {
+        var toJsonCode = property.type.toJsonCode(property.name, {});
+
+        var isRequired = _isPropertyRequired(property);
+
+        if (!isRequired) {
+          buffer.writeln('if (${property.name.camelCased} != null) {');
+        }
+        buffer.writeln("json[r'${property.name.original}'] = $toJsonCode;");
+        if (!isRequired) {
+          buffer.writeln('}');
+        }
+      }
+      buffer.writeln('return json;');
+      buffer.writeln('}');
+    } else {
+      buffer.writeln('Map<String, String> toFields() {');
+      buffer.writeln('var \$fields = <String, String>{};');
+      for (final property in _properties) {
+        var isRequired = _isPropertyRequired(property);
+        if (!isRequired) {
+          buffer.writeln(
+              'if (${property.name.camelCased} case var ${property.name.camelCased}?) {');
+        }
+        var type = property.type;
+        var lines = _fieldEncodeLines(property.name.camelCased, type,
+            prefixes: [property.name.original]);
+        for (var line in lines) {
+          buffer.writeln(line);
+        }
+        if (!isRequired) {
+          buffer.writeln('}');
+        }
+      }
+      buffer.writeln('return \$fields;');
+      buffer.writeln('}');
     }
-    buffer.writeln('return json;');
-    buffer.writeln('}');
 
     if (_properties.isNotEmpty) {
       buffer.writeln('$className copyWith({');
@@ -709,6 +772,57 @@ class ComplexType extends DartType {
     }
 
     return buffer.toString();
+  }
+
+  Iterable<String> _fieldEncodeLines(String variable, DartType type,
+      {required List<String> prefixes}) sync* {
+    if (type is ListDartType) {
+      var loopVariable = 'e${prefixes.length}';
+      yield 'for (var (i, $loopVariable) in $variable.indexed) {';
+      yield* _fieldEncodeLines(loopVariable, type.itemType,
+          prefixes: [...prefixes, '[\$i]']);
+      yield '}';
+    } else if (type is MapDartType) {
+      yield '// TODO: support map';
+      yield 'throw UnimplementedError();';
+    } else if (type is ComplexType) {
+      for (var property in type._properties) {
+        var isRequired = type._isPropertyRequired(property);
+        if (!isRequired) {
+          yield 'if ($variable.${property.name.camelCased} case var ${property.name.camelCased}?) {';
+        }
+        var variableName = property.name.camelCased;
+        if (isRequired) {
+          variableName = '$variable.$variableName';
+        }
+        yield* _fieldEncodeLines(variableName, property.type,
+            prefixes: [...prefixes, property.name.original]);
+        if (!isRequired) {
+          yield '}';
+        }
+      }
+    } else {
+      yield "\$fields['${_joinPrefixes(prefixes)}'] = '\$$variable';";
+    }
+  }
+
+  String _joinPrefixes(List<String> prefixes) {
+    var result = '';
+    for (var prefix in prefixes) {
+      var lastChar =
+          result.isEmpty ? null : String.fromCharCode(result.runes.last);
+      if (lastChar != null) {
+        if (!prefix.startsWith('[')) {
+          if (lastChar == ']') {
+            prefix = '[$prefix]';
+          } else {
+            prefix = '.$prefix';
+          }
+        }
+      }
+      result += prefix;
+    }
+    return result;
   }
 }
 
@@ -819,9 +933,9 @@ class InlineComplexType extends ComplexType {
   }
 
   InlineComplexType.withTitle(Api api, String title, sw.Schema schema,
-      {bool isList = false})
-      : super(api, title, schema) {
-    assert(schema.type == 'object');
+      {bool isList = false, RequestBody? requestBody})
+      : super(api, title, schema, requestBody: requestBody) {
+    assert(schema.type == 'object', '$title ${schema.type}');
   }
 
   static String _computeName(Api api, DartType parent, String propertyName,
@@ -854,6 +968,10 @@ class DartType {
       return simpleType.identifierToString(identifier);
     }
     return "'\$$identifier'";
+  }
+
+  String toFieldCode(PropertyName propertyName) {
+    return '${propertyName.camelCased}.toString()';
   }
 
   String toJsonCode(
@@ -1046,6 +1164,9 @@ class MapDartType extends DartType {
 
   factory MapDartType.withDynamic(Api api) => MapDartType.withTypes(
       api, DartType(api, 'String'), DartType(api, 'dynamic'));
+
+  factory MapDartType.string(Api api) => MapDartType.withTypes(
+      api, DartType(api, 'String'), DartType(api, 'String'));
 
   @override
   String get defaultValue => simpleType?.defaultValue ?? '{}';

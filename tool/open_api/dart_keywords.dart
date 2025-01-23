@@ -26,6 +26,8 @@ const _replacements = {
   '>': 'greaterThan',
   '<': 'lessThan',
   '=': 'equal',
+  'GMT+': 'gmtPlus',
+  'GMT-': 'gmtMinus',
 };
 
 final _digitRegex = RegExp('[0-9]');
@@ -40,7 +42,7 @@ String dartIdentifier(String input) {
   if (input.startsWith(_digitRegex)) {
     return '\$$input';
   } else if (_dartKeywords.contains(input)) {
-    return '$input\$';
+    return '${input}_';
   } else if (input.isEmpty) {
     return r'$';
   } else {

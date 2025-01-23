@@ -19,7 +19,7 @@ class ApiClient {
     Map<String, String>? queryParameters,
     Map<String, Iterable<String>>? queryParametersAll,
     Map<String, String>? headers,
-    dynamic body,
+    Map<String, String>? body,
   }) async {
     var path = pathTemplate;
 
@@ -49,7 +49,7 @@ class ApiClient {
     if (body != null) {
       bodyRequest
         ..headers['content-type'] = 'application/x-www-form-urlencoded'
-        ..body = body;
+        ..bodyFields = body;
     }
 
     if (headers != null) {
@@ -120,3 +120,4 @@ class ApiException implements Exception {
     throw ApiException.fromResponse(response);
   }
 }
+

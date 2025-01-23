@@ -299,7 +299,7 @@ class Schema {
     this.defaultValue,
     this.example,
     this.discriminator,
-    this.title,
+    String? title,
     this.expandableFields,
     this.resourceId,
     this.stripeBypassValidation,
@@ -307,12 +307,19 @@ class Schema {
   )   : properties = properties ?? const {},
         required = required ?? const [],
         description = description ?? '',
+  title = _filterTitle(title),
         enums = _nullIfEmpty(enums?.nonNulls
             .map((s) => '$s')
             .where((e) => e.isNotEmpty)
             .toList());
 
   factory Schema.fromJson(Map<String, dynamic> json) => _$SchemaFromJson(json);
+
+  static String? _filterTitle(String? title) {
+    if (title == null) return null;
+    if (const ['payment_method_options_param'].contains(title)) return null;
+    return title;
+  }
 
   static List<String>? _nullIfEmpty(List<String>? list) {
     if (list == null || list.isEmpty) {
