@@ -782,9 +782,6 @@ class ComplexType extends DartType {
       yield* _fieldEncodeLines(loopVariable, type.itemType,
           prefixes: [...prefixes, '[\$i]']);
       yield '}';
-    } else if (type is MapDartType) {
-      yield '// TODO: support map';
-      yield 'throw UnimplementedError();';
     } else if (type is ComplexType) {
       for (var property in type._properties) {
         var isRequired = type._isPropertyRequired(property);
@@ -802,7 +799,18 @@ class ComplexType extends DartType {
         }
       }
     } else {
-      yield "\$fields['${_joinPrefixes(prefixes)}'] = '\$$variable';";
+      if (type is MapDartType) {
+        yield '// TODO: support map';
+      }
+      var encodedVariable = variable;
+      if (type.simpleType != SimpleType.string) {
+        if (encodedVariable.contains('.')) {
+          encodedVariable = '{$encodedVariable}';
+        }
+        encodedVariable = "'\$$encodedVariable'";
+      }
+
+      yield "\$fields['${_joinPrefixes(prefixes)}'] = $encodedVariable;";
     }
   }
 
