@@ -48,8 +48,8 @@ class ApiClient {
 
     if (body != null) {
       bodyRequest
-        ..headers['content-type'] = 'application/json'
-        ..body = jsonEncode(body);
+        ..headers['content-type'] = 'application/x-www-form-urlencoded'
+        ..body = body;
     }
 
     if (headers != null) {
